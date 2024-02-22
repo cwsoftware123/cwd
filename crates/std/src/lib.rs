@@ -9,7 +9,7 @@ mod types;
 
 pub use crate::{
     error::{StdError, StdResult},
-    serde::{from_json, to_json},
+    serde::{from_json, from_proto, to_json, to_proto},
     storage::{
         concat, encode_length, extend_one_byte, increment_last_byte, nested_namespaces_with_key,
         split_one_key, trim, Batch, Bound, Item, Map, MapKey, Op, Order, Path, PathBuf, Prefix,

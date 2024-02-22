@@ -1,5 +1,6 @@
 use {
     crate::{Binary, StdError, StdResult},
+    prost::Message,
     serde::{de::DeserializeOwned, ser::Serialize},
 };
 
@@ -15,4 +16,18 @@ where
     T: Serialize,
 {
     serde_json_wasm::to_vec(data).map(Into::into).map_err(StdError::serialize::<T>)
+}
+
+pub fn from_proto<T>(bytes: impl AsRef<[u8]>) -> StdResult<T>
+where
+    T: Message + Default,
+{
+    T::decode(bytes.as_ref()).map_err(StdError::serialize::<T>)
+}
+
+pub fn to_proto<T>(data: &T) -> Binary
+where
+    T: Message,
+{
+    data.encode_to_vec().into()
 }

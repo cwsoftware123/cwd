@@ -1,6 +1,6 @@
 use {
-    crate::{from_json, nested_namespaces_with_key, to_json, RawKey, StdError, StdResult, Storage},
-    serde::{de::DeserializeOwned, ser::Serialize},
+    crate::{from_proto, nested_namespaces_with_key, to_proto, RawKey, StdError, StdResult, Storage},
+    prost::Message,
     std::marker::PhantomData,
 };
 
@@ -41,21 +41,21 @@ impl<'a, T> Path<'a, T> {
 
 impl<'a, T> Path<'a, T>
 where
-    T: Serialize + DeserializeOwned,
+    T: Message + Default,
 {
     pub fn exists(&self, store: &dyn Storage) -> bool {
         store.read(self.storage_key).is_some()
     }
 
     pub fn may_load(&self, store: &dyn Storage) -> StdResult<Option<T>> {
-        store.read(self.storage_key).map(from_json).transpose()
+        store.read(self.storage_key).map(from_proto).transpose()
     }
 
     pub fn load(&self, store: &dyn Storage) -> StdResult<T> {
-        from_json(store
+        store
             .read(self.storage_key)
-            .ok_or_else(|| StdError::data_not_found::<T>(self.storage_key))?)
-            .map_err(Into::into)
+            .ok_or_else(|| StdError::data_not_found::<T>(self.storage_key))
+            .and_then(from_proto)
     }
 
     // compared to the original cosmwasm, we require `action` to return an
@@ -68,7 +68,7 @@ where
         let maybe_data = action(self.may_load(store)?)?;
 
         if let Some(data) = &maybe_data {
-            self.save(store, data)?;
+            self.save(store, data);
         } else {
             self.remove(store);
         }
@@ -76,10 +76,9 @@ where
         Ok(maybe_data)
     }
 
-    pub fn save(&self, store: &mut dyn Storage, data: &T) -> StdResult<()> {
-        let bytes = to_json(data)?;
+    pub fn save(&self, store: &mut dyn Storage, data: &T) {
+        let bytes = to_proto(data);
         store.write(self.storage_key, &bytes);
-        Ok(())
     }
 
     pub fn remove(&self, store: &mut dyn Storage) {

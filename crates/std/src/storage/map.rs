@@ -1,6 +1,6 @@
 use {
     crate::{Bound, MapKey, Order, PathBuf, Prefix, StdError, StdResult, Storage},
-    serde::{de::DeserializeOwned, ser::Serialize},
+    prost::Message,
     std::marker::PhantomData,
 };
 
@@ -44,7 +44,7 @@ where
 impl<'a, K, T> Map<'a, K, T>
 where
     K: MapKey,
-    T: Serialize + DeserializeOwned,
+    T: Message + Default,
 {
     pub fn is_empty(&self, store: &dyn Storage) -> bool {
         self.range(store, None, None, Order::Ascending).next().is_none()
@@ -70,7 +70,7 @@ where
         self.path(k).as_path().update(store, action)
     }
 
-    pub fn save(&self, store: &mut dyn Storage, k: K, data: &T) -> StdResult<()> {
+    pub fn save(&self, store: &mut dyn Storage, k: K, data: &T) {
         self.path(k).as_path().save(store, data)
     }
 

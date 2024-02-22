@@ -1,6 +1,7 @@
-use std::marker::PhantomData;
-
-use crate::{Bound, Empty, MapKey, Order, PathBuf, Prefix, StdResult, Storage};
+use {
+    crate::{Bound, Empty, MapKey, Order, PathBuf, Prefix, StdResult, Storage},
+    std::marker::PhantomData,
+};
 
 /// Mimic the behavior of HashSet or BTreeSet.
 /// Internally, this is basicaly a `Map<T, Empty>`.
@@ -44,7 +45,7 @@ where
         self.path(item).as_path().exists(store)
     }
 
-    pub fn insert(&self, store: &mut dyn Storage, item: T) -> StdResult<()> {
+    pub fn insert(&self, store: &mut dyn Storage, item: T) {
         self.path(item).as_path().save(store, &Empty {})
     }
 

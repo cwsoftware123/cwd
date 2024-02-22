@@ -1,6 +1,6 @@
 use {
     crate::{Path, StdError, StdResult, Storage},
-    serde::{de::DeserializeOwned, ser::Serialize},
+    prost::Message,
     std::marker::PhantomData,
 };
 
@@ -24,7 +24,7 @@ impl<'a, T> Item<'a, T> {
 
 impl<'a, T> Item<'a, T>
 where
-    T: Serialize + DeserializeOwned,
+    T: Message + Default,
 {
     pub fn exists(&self, store: &dyn Storage) -> bool {
         self.path().exists(store)
@@ -46,7 +46,7 @@ where
         self.path().update(store, action)
     }
 
-    pub fn save(&self, store: &mut dyn Storage, data: &T) -> StdResult<()> {
+    pub fn save(&self, store: &mut dyn Storage, data: &T) {
         self.path().save(store, data)
     }
 
