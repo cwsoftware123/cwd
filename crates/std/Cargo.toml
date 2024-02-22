@@ -17,6 +17,7 @@ dyn-clone       = { workspace = true }
 forward_ref     = { workspace = true }
 hex             = { workspace = true }
 hex-literal     = { workspace = true }
+prost           = { workspace = true }
 serde           = { workspace = true, features = ["derive"] }
 serde-json-wasm = { workspace = true }
 serde_with      = { workspace = true }

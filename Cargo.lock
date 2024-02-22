@@ -879,6 +879,7 @@ dependencies = [
  "hex",
  "hex-literal",
  "proptest",
+ "prost",
  "serde",
  "serde-json-wasm",
  "serde_with",
