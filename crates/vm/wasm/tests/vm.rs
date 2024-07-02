@@ -1,7 +1,7 @@
 use {
     anyhow::ensure,
     grug_account::{make_sign_bytes, PublicKey, StateResponse},
-    grug_app::{App, AppResult},
+    grug_app::{App, AppError, AppResult},
     grug_crypto::{sha2_256, Identity256},
     grug_db_memory::MemDb,
     grug_types::{
@@ -28,6 +28,42 @@ const MOCK_RECEIVER_SALT: &[u8] = b"receiver";
 fn read_wasm_file(filename: &str) -> io::Result<Vec<u8>> {
     let path = format!("{}/testdata/{filename}", env!("CARGO_MANIFEST_DIR"));
     fs::read(path)
+}
+
+#[derive(Debug)]
+struct AppExecuteResponse {
+    txs: Vec<Tx>,
+    response: Vec<AppResult<Vec<Event>>>,
+}
+
+impl AppExecuteResponse {
+    fn new(txs: Vec<Tx>, response: Vec<AppResult<Vec<Event>>>) -> Self {
+        if txs.len() != response.len() {
+            panic!("txs and response must have the same length");
+        }
+        Self { txs, response }
+    }
+
+    fn no_errors(self) -> AppResult<Vec<(Tx, Vec<Event>)>> {
+        self.txs
+            .into_iter()
+            .zip(self.response)
+            .map(|(tx, res)| res.map(|res| (tx, res)))
+            .collect()
+    }
+
+    fn errors(self) -> Vec<(usize, Tx, AppError)> {
+        self.txs.into_iter().zip(self.response).enumerate().fold(
+            vec![],
+            |mut buff, (i, (tx, response))| match response {
+                Ok(_) => buff,
+                Err(err) => {
+                    buff.push((i, tx, err));
+                    buff
+                },
+            },
+        )
+    }
 }
 
 struct TestSuite {
@@ -83,7 +119,7 @@ impl TestSuite {
         sk: &SigningKey,
         gas_limit: u64,
         msgs: Vec<Message>,
-    ) -> anyhow::Result<Vec<AppResult<Vec<Event>>>> {
+    ) -> anyhow::Result<AppExecuteResponse> {
         // Sign the transaction
         let sequence = self.query_account_sequence(sender.clone())?;
         let sign_bytes = make_sign_bytes(sha2_256, &msgs, sender, MOCK_CHAIN_ID, sequence)?;
@@ -102,12 +138,12 @@ impl TestSuite {
         // Finalize block + commit
         let (_, _, results) = self
             .app
-            .do_finalize_block(self.block.clone(), vec![(Hash::ZERO, tx)])?;
+            .do_finalize_block(self.block.clone(), vec![(Hash::ZERO, tx.clone())])?;
 
         self.app.do_commit()?;
 
         // Check if tx was successful
-        Ok(results)
+        Ok(AppExecuteResponse::new(vec![tx], results))
     }
 
     fn assert_balance(&self, address: &Addr, denom: &str, expect: u128) -> anyhow::Result<()> {
@@ -126,13 +162,17 @@ impl TestSuite {
     }
 }
 
-#[test]
-fn wasm_vm_works() -> anyhow::Result<()> {
+fn start_tracing() {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .with_max_level(tracing::Level::TRACE)
         .finish();
 
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+    let _ = tracing::subscriber::set_global_default(subscriber);
+}
+
+#[test]
+fn wasm_vm_works() -> anyhow::Result<()> {
+    start_tracing();
 
     let mut suite = TestSuite::new();
 
@@ -217,29 +257,33 @@ fn wasm_vm_works() -> anyhow::Result<()> {
     suite.assert_balance(&sender, MOCK_DENOM, 100)?;
 
     // Sender sends 25 ugrug to the receiver.
-    suite.send_messages(&sender, &sender_sk, 300_000, vec![Message::Transfer {
-        to: receiver.clone(),
-        coins: vec![Coin::new(MOCK_DENOM, 25_u128)].try_into().unwrap(),
-    }])?;
+    suite
+        .send_messages(&sender, &sender_sk, 300_000, vec![Message::Transfer {
+            to: receiver.clone(),
+            coins: vec![Coin::new(MOCK_DENOM, 25_u128)].try_into().unwrap(),
+        }])?
+        .no_errors()?;
 
     // Check balances again.
     suite.assert_balance(&sender, MOCK_DENOM, 75)?;
     suite.assert_balance(&receiver, MOCK_DENOM, 25)?;
 
-    suite.send_messages(&sender, &sender_sk, 900_000, vec![
-        Message::Transfer {
-            to: receiver.clone(),
-            coins: vec![Coin::new(MOCK_DENOM, 10_u128)].try_into().unwrap(),
-        },
-        Message::Transfer {
-            to: receiver.clone(),
-            coins: vec![Coin::new(MOCK_DENOM, 15_u128)].try_into().unwrap(),
-        },
-        Message::Transfer {
-            to: receiver.clone(),
-            coins: vec![Coin::new(MOCK_DENOM, 20_u128)].try_into().unwrap(),
-        },
-    ])?;
+    suite
+        .send_messages(&sender, &sender_sk, 900_000, vec![
+            Message::Transfer {
+                to: receiver.clone(),
+                coins: vec![Coin::new(MOCK_DENOM, 10_u128)].try_into().unwrap(),
+            },
+            Message::Transfer {
+                to: receiver.clone(),
+                coins: vec![Coin::new(MOCK_DENOM, 15_u128)].try_into().unwrap(),
+            },
+            Message::Transfer {
+                to: receiver.clone(),
+                coins: vec![Coin::new(MOCK_DENOM, 20_u128)].try_into().unwrap(),
+            },
+        ])?
+        .no_errors()?;
 
     // Check balances again.
     suite.assert_balance(&sender, MOCK_DENOM, 30)?;
@@ -261,6 +305,8 @@ fn wasm_vm_works() -> anyhow::Result<()> {
 
 #[test]
 fn immutable_state() -> anyhow::Result<()> {
+    start_tracing();
+
     let mut suite = TestSuite::new();
 
     // Generate private keys for the accounts
@@ -333,23 +379,21 @@ fn immutable_state() -> anyhow::Result<()> {
 
     // Upload
     suite
-        .send_messages(&user, &user_sk, 1_000_000_000_000, vec![Message::Upload {
+        .send_messages(&user, &user_sk, 80_000_000, vec![Message::Upload {
             code: immutable_state_code.into(),
-        }])
-        .unwrap();
+        }])?
+        .no_errors()?;
 
     // Instantiate
     suite
-        .send_messages(&user, &user_sk, 1_000_000_000_000, vec![
-            Message::Instantiate {
-                code_hash: immutable_state_code_hash,
-                msg: Json::default(),
-                salt: salt.into(),
-                funds: Coins::default(),
-                admin: None,
-            },
-        ])
-        .unwrap();
+        .send_messages(&user, &user_sk, 1_000_000, vec![Message::Instantiate {
+            code_hash: immutable_state_code_hash,
+            msg: Json::default(),
+            salt: salt.into(),
+            funds: Coins::default(),
+            admin: None,
+        }])?
+        .no_errors()?;
 
     // Execute the contract.
     // During the execution the contract make a query to itself
@@ -359,13 +403,13 @@ fn immutable_state() -> anyhow::Result<()> {
             contract: immutable_addr,
             msg: Json::default(),
             funds: Coins::default(),
-        }])
-        .unwrap();
+        }])?
+        .errors();
 
-    let err = result.first().unwrap().as_ref().unwrap_err();
+    let err = &result.first().unwrap().2;
 
     assert!(err
         .to_string()
-        .contains("db state changed detected on readonly instanc"));
+        .contains("db state changed detected on readonly instance"));
     Ok(())
 }
