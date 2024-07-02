@@ -357,6 +357,9 @@ fn immutable_state() -> anyhow::Result<()> {
         ])
         .unwrap();
 
+    // Execute the contract.
+    // During the execution the contract make a query to itself
+    // and the query try to write the storage.
     let result = suite
         .send_messages(&user, &user_sk, 1_000_000, vec![Message::Execute {
             contract: immutable_addr,
