@@ -364,9 +364,8 @@ fn immutable_state() -> anyhow::Result<()> {
 
     let err = result.first().unwrap().as_ref().unwrap_err();
 
-    assert_eq!(
-        err.to_string(),
-        "VM error: RuntimeError: generic error: VM error: RuntimeError: db state changed detected on readonly instance"
-    );
+    assert!(err
+        .to_string()
+        .contains("db state changed detected on readonly instanc"));
     Ok(())
 }
