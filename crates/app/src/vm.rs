@@ -19,6 +19,7 @@ pub fn call_in_0_out_1<VM, R>(
     code_hash: &Hash,
     ctx: &Context,
     gas_tracker: SharedGasTracker,
+    storage_readonly: bool,
 ) -> AppResult<R>
 where
     R: DeserializeOwned,
@@ -33,6 +34,7 @@ where
         &ctx.contract,
         code_hash,
         gas_tracker,
+        storage_readonly,
     )?;
 
     // Call the function; deserialize the output as JSON
@@ -51,6 +53,7 @@ pub fn call_in_1_out_1<VM, P, R>(
     code_hash: &Hash,
     ctx: &Context,
     gas_tracker: SharedGasTracker,
+    storage_readonly: bool,
     param: &P,
 ) -> AppResult<R>
 where
@@ -67,6 +70,7 @@ where
         &ctx.contract,
         code_hash,
         gas_tracker,
+        storage_readonly,
     )?;
 
     // Serialize the param as JSON
@@ -88,6 +92,7 @@ pub fn call_in_2_out_1<VM, P1, P2, R>(
     code_hash: &Hash,
     ctx: &Context,
     gas_tracker: SharedGasTracker,
+    storage_readonly: bool,
     param1: &P1,
     param2: &P2,
 ) -> AppResult<R>
@@ -106,6 +111,7 @@ where
         &ctx.contract,
         code_hash,
         gas_tracker,
+        storage_readonly,
     )?;
 
     // Serialize the params as JSON
@@ -129,6 +135,7 @@ pub fn call_in_0_out_1_handle_response<VM>(
     code_hash: &Hash,
     ctx: &Context,
     gas_tracker: SharedGasTracker,
+    storage_readonly: bool,
 ) -> AppResult<Vec<Event>>
 where
     VM: Vm + Clone,
@@ -141,6 +148,7 @@ where
         code_hash,
         ctx,
         gas_tracker.clone(),
+        storage_readonly,
     )?
     .into_std_result()?;
 
@@ -157,6 +165,7 @@ pub fn call_in_1_out_1_handle_response<VM, P>(
     code_hash: &Hash,
     ctx: &Context,
     gas_tracker: SharedGasTracker,
+    storage_readonly: bool,
     param: &P,
 ) -> AppResult<Vec<Event>>
 where
@@ -171,6 +180,7 @@ where
         code_hash,
         ctx,
         gas_tracker.clone(),
+        storage_readonly,
         param,
     )?
     .into_std_result()?;
@@ -188,6 +198,7 @@ pub fn call_in_2_out_1_handle_response<VM, P1, P2>(
     code_hash: &Hash,
     ctx: &Context,
     gas_tracker: SharedGasTracker,
+    storage_readonly: bool,
     param1: &P1,
     param2: &P2,
 ) -> AppResult<Vec<Event>>
@@ -204,6 +215,7 @@ where
         code_hash,
         ctx,
         gas_tracker.clone(),
+        storage_readonly,
         param1,
         param2,
     )?
@@ -219,6 +231,7 @@ fn create_vm_instance<VM>(
     address: &Addr,
     code_hash: &Hash,
     gas_tracker: SharedGasTracker,
+    storage_readonly: bool,
 ) -> AppResult<VM::Instance>
 where
     VM: Vm + Clone,
@@ -231,7 +244,7 @@ where
     let querier = QuerierProvider::new(vm.clone(), storage.clone(), block, gas_tracker.clone());
     let storage = StorageProvider::new(storage, &[CONTRACT_NAMESPACE, address]);
 
-    Ok(vm.build_instance(storage, querier, &code, gas_tracker)?)
+    Ok(vm.build_instance(storage, querier, &code, gas_tracker, storage_readonly)?)
 }
 
 pub(crate) fn handle_response<VM>(

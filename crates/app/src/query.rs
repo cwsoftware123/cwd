@@ -127,6 +127,7 @@ where
         &account.code_hash,
         &ctx,
         gas_tracker.clone(),
+        true,
         msg,
     )?
     .into_std_result()
@@ -226,6 +227,7 @@ where
         &account.code_hash,
         &ctx,
         gas_tracker,
+        true,
         &msg,
     )?
     .into_std_result()?;

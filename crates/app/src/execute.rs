@@ -182,6 +182,7 @@ where
         &account.code_hash,
         &ctx,
         gas_tracker.clone(),
+        false,
         &msg,
     )?;
 
@@ -221,6 +222,7 @@ where
         &account.code_hash,
         &ctx,
         gas_tracker,
+        false,
     )
 }
 
@@ -333,6 +335,7 @@ where
         &account.code_hash,
         &ctx,
         gas_tracker,
+        false,
         msg,
     )?);
 
@@ -426,6 +429,7 @@ where
         &account.code_hash,
         &ctx,
         gas_tracker,
+        false,
         msg,
     )?);
 
@@ -519,6 +523,7 @@ where
         &account.code_hash,
         &ctx,
         gas_tracker,
+        false,
         msg,
     )
 }
@@ -591,6 +596,7 @@ where
         &account.code_hash,
         &ctx,
         gas_tracker,
+        false,
         msg,
         result,
     )
@@ -685,7 +691,16 @@ where
         simulate: Some(false),
     };
 
-    call_in_1_out_1_handle_response(vm, name, storage, &account.code_hash, &ctx, gas_tracker, tx)
+    call_in_1_out_1_handle_response(
+        vm,
+        name,
+        storage,
+        &account.code_hash,
+        &ctx,
+        gas_tracker,
+        false,
+        tx,
+    )
 }
 
 // ---------------------------- before/after block -----------------------------
@@ -777,5 +792,13 @@ where
         simulate: None,
     };
 
-    call_in_0_out_1_handle_response(vm, name, storage, &account.code_hash, &ctx, gas_tracker)
+    call_in_0_out_1_handle_response(
+        vm,
+        name,
+        storage,
+        &account.code_hash,
+        &ctx,
+        gas_tracker,
+        false,
+    )
 }

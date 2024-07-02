@@ -6,7 +6,7 @@ use {
     grug_db_memory::MemDb,
     grug_types::{
         from_json_value, to_json_value, Addr, BlockInfo, Coin, Coins, Config, Event, GenesisState,
-        Hash, Message, NumberConst, Permission, Permissions, QueryRequest, QueryResponse,
+        Hash, Json, Message, NumberConst, Permission, Permissions, QueryRequest, QueryResponse,
         Timestamp, Tx, Uint64, GENESIS_SENDER,
     },
     grug_vm_wasm::WasmVm,
@@ -256,5 +256,120 @@ fn wasm_vm_works() -> anyhow::Result<()> {
     suite.assert_balance(&sender, MOCK_DENOM, 30)?;
     suite.assert_balance(&receiver, MOCK_DENOM, 70)?;
 
+    Ok(())
+}
+
+#[test]
+fn immutable_state() -> anyhow::Result<()> {
+    let subscriber = tracing_subscriber::FmtSubscriber::builder()
+        .with_max_level(tracing::Level::TRACE)
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+
+    let mut suite = TestSuite::new();
+
+    // Generate private keys for the accounts
+    let user_sk = SigningKey::random(&mut OsRng);
+    let user_pk = user_sk.verifying_key().to_encoded_point(true).to_bytes();
+
+    // Load account contract byte code, and predict account addresses
+    let account_code = read_wasm_file("grug_account.wasm")?;
+    let account_code_hash = Hash::from_slice(sha2_256(&account_code));
+    let user = Addr::compute(&GENESIS_SENDER, &account_code_hash, MOCK_SENDER_SALT);
+
+    // Load bank contract byte code, and predict its address.
+    let bank_code = read_wasm_file("grug_bank.wasm")?;
+    let bank_code_hash = Hash::from_slice(sha2_256(&bank_code));
+    let bank = Addr::compute(&GENESIS_SENDER, &bank_code_hash, MOCK_BANK_SALT);
+
+    // Genesis the chain. This deploys the bank contract and gives the "sender"
+    // account 100 ugrug.
+    suite.init_chain(GenesisState {
+        config: Config {
+            owner: None,
+            bank: bank.clone(),
+            begin_blockers: vec![],
+            end_blockers: vec![],
+            permissions: Permissions {
+                upload: Permission::Everybody,
+                instantiate: Permission::Everybody,
+                create_client: Permission::Everybody,
+                create_connection: Permission::Everybody,
+                create_channel: Permission::Everybody,
+            },
+            allowed_clients: BTreeSet::new(),
+        },
+        msgs: vec![
+            Message::Upload {
+                code: account_code.into(),
+            },
+            Message::Upload {
+                code: bank_code.into(),
+            },
+            Message::Instantiate {
+                code_hash: account_code_hash.clone(),
+                msg: to_json_value(&grug_account::InstantiateMsg {
+                    public_key: PublicKey::Secp256k1(user_pk.to_vec().into()),
+                })?,
+                salt: MOCK_SENDER_SALT.to_vec().into(),
+                funds: Coins::new_empty(),
+                admin: Some(user.clone()),
+            },
+            Message::Instantiate {
+                code_hash: bank_code_hash,
+                msg: to_json_value(&grug_bank::InstantiateMsg {
+                    initial_balances: BTreeMap::from([(
+                        user.clone(),
+                        Coins::new_one(MOCK_DENOM, 100_u128),
+                    )]),
+                })?,
+                salt: MOCK_BANK_SALT.to_vec().into(),
+                funds: Coins::new_empty(),
+                admin: None,
+            },
+        ],
+    })?;
+
+    // Load the immutable state contract byte code
+    let immutable_state_code = read_wasm_file("grug_t_immutable_state.wasm")?;
+    let immutable_state_code_hash = Hash::from_slice(sha2_256(&immutable_state_code));
+    let salt = b"salt".to_vec();
+    let immutable_addr = Addr::compute(&user, &immutable_state_code_hash, &salt);
+
+    // Upload
+    suite
+        .send_messages(&user, &user_sk, 1_000_000_000_000, vec![Message::Upload {
+            code: immutable_state_code.into(),
+        }])
+        .unwrap();
+
+    // Instantiate
+    suite
+        .send_messages(&user, &user_sk, 1_000_000_000_000, vec![
+            Message::Instantiate {
+                code_hash: immutable_state_code_hash,
+                msg: Json::default(),
+                salt: salt.into(),
+                funds: Coins::default(),
+                admin: None,
+            },
+        ])
+        .unwrap();
+
+    let result = suite
+        .send_messages(&user, &user_sk, 1_000_000, vec![Message::Execute {
+            contract: immutable_addr,
+            msg: Json::default(),
+            funds: Coins::default(),
+        }])
+        .unwrap();
+
+    let err = result.first().unwrap().as_ref().unwrap_err();
+
+    assert_eq!(
+        err.to_string(),
+        "VM error: RuntimeError: generic error: VM error: RuntimeError: db state changed detected on readonly instance"
+    );
     Ok(())
 }

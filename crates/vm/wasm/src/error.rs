@@ -79,6 +79,9 @@ pub enum VmError {
 
     #[error("unexpected return type: {0}")]
     ReturnType(&'static str),
+
+    #[error("db state changed detected on readonly instance")]
+    ReadOnly,
 }
 
 impl From<CompileError> for VmError {

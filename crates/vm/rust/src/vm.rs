@@ -31,6 +31,7 @@ impl Vm for RustVm {
         querier: QuerierProvider<Self>,
         code: &[u8],
         _gas_tracker: SharedGasTracker,
+        _storage_readonly: bool,
     ) -> VmResult<RustInstance> {
         Ok(RustInstance {
             storage,
